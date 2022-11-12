@@ -3,6 +3,9 @@ package producer
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"io/ioutil"
+	"log"
 	"net/http"
 	"reflect"
 	"strconv"
@@ -82,6 +85,72 @@ func QueryAmDataProcedure(collName string, ueId string, servingPlmnId string) (*
 		return nil, pd
 	}
 	return &data, nil
+}
+
+type SubscribedSNSSAI struct {
+	sst string
+	sd  string
+}
+
+type SnssaiList struct {
+	defaultSingleNssais []SubscribedSNSSAI
+}
+
+func HandleSetAmData(request *httpwrapper.Request) *httpwrapper.Response {
+	logger.DataRepoLog.Infof("Handle SetAmData")
+
+	// retrieve parameters
+	collName := "subscriptionData.provisionedData.amData"
+	ueId := request.Params["ueId"]
+	servingPlmnId := request.Params["servingPlmnId"]
+
+	// retrieve jsonData = new Subscribed S-NSSAIs
+	jsonData, err := ioutil.ReadAll(request.Body.(io.ReadCloser))
+	if err != nil {
+		log.Print(err)
+	}
+
+	// prep var to put the values in
+	var newSubscribedSNSSAIs SnssaiList
+	// parse the JSON to the objects we want
+	err = json.Unmarshal(jsonData, &newSubscribedSNSSAIs)
+	if err != nil {
+		log.Print(err)
+	}
+
+	// actually run the update procedure
+	err = SetAmDataProcedure(collName, ueId, servingPlmnId, newSubscribedSNSSAIs)
+
+	if err == nil {
+		return httpwrapper.NewResponse(http.StatusOK, nil, nil)
+	} else {
+		return httpwrapper.NewResponse(http.StatusNotImplemented, nil, nil)
+	}
+}
+
+func SetAmDataProcedure(collName string, ueId string, servingPlmnId string, newSubscribedSNSSAIs SnssaiList) error {
+
+	// create filter to find the data that should be updated
+	filter := bson.M{"ueId": ueId, "servingPlmnId": servingPlmnId}
+
+	// create the patchItem - see https://www.rfc-editor.org/rfc/rfc6902.html
+	patchItem := models.PatchItem{
+		Op:    "replace",
+		Path:  "/nssai",
+		Value: newSubscribedSNSSAIs,
+	}
+
+	// make a slice because the function requires that
+	var patchItems []models.PatchItem
+	patchItems = append(patchItems, patchItem)
+
+	// call patchDataToDBAndNotify here
+	err := patchDataToDBAndNotify(collName, ueId, patchItems, filter)
+	if err != nil {
+		log.Print(err)
+	}
+
+	return err
 }
 
 func HandleAmfContext3gpp(request *httpwrapper.Request) *httpwrapper.Response {

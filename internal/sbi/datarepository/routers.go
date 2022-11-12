@@ -257,6 +257,13 @@ var routes = Routes{
 	},
 
 	{
+		"HTTPSetAmData",
+		strings.ToUpper("Post"),
+		"/subscription-data/:ueId/:servingPlmnId/provisioned-data/am-data",
+		HTTPSetAmData,
+	},
+
+	{
 		"HTTPQueryAuthenticationStatus",
 		strings.ToUpper("Get"),
 		"/subscription-data/:ueId/:servingPlmnId/authentication-status",
