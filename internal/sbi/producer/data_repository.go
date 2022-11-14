@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"reflect"
 	"strconv"
@@ -88,7 +87,7 @@ func QueryAmDataProcedure(collName string, ueId string, servingPlmnId string) (*
 }
 
 type SubscribedSNSSAI struct {
-	sst string
+	sst int
 	sd  string
 }
 
@@ -107,15 +106,15 @@ func HandleSetAmData(request *httpwrapper.Request) *httpwrapper.Response {
 	// retrieve jsonData = new Subscribed S-NSSAIs
 	jsonData, err := ioutil.ReadAll(request.Body.(io.ReadCloser))
 	if err != nil {
-		log.Print(err)
+		logger.DataRepoLog.Debugf(err.Error())
 	}
 
 	// prep var to put the values in
-	var newSubscribedSNSSAIs SnssaiList
+	var newSubscribedSNSSAIs interface{}
 	// parse the JSON to the objects we want
 	err = json.Unmarshal(jsonData, &newSubscribedSNSSAIs)
 	if err != nil {
-		log.Print(err)
+		logger.DataRepoLog.Debugf(err.Error())
 	}
 
 	// actually run the update procedure
@@ -128,7 +127,7 @@ func HandleSetAmData(request *httpwrapper.Request) *httpwrapper.Response {
 	}
 }
 
-func SetAmDataProcedure(collName string, ueId string, servingPlmnId string, newSubscribedSNSSAIs SnssaiList) error {
+func SetAmDataProcedure(collName string, ueId string, servingPlmnId string, newSubscribedSNSSAIs interface{}) error {
 
 	// create filter to find the data that should be updated
 	filter := bson.M{"ueId": ueId, "servingPlmnId": servingPlmnId}
@@ -140,14 +139,14 @@ func SetAmDataProcedure(collName string, ueId string, servingPlmnId string, newS
 		Value: newSubscribedSNSSAIs,
 	}
 
-	// make a slice because the function requires that
-	var patchItems []models.PatchItem
-	patchItems = append(patchItems, patchItem)
+	// make a slice because the function requires that - a Patch is a slice of PatchItems
+	var patch []models.PatchItem
+	patch = append(patch, patchItem)
 
 	// call patchDataToDBAndNotify here
-	err := patchDataToDBAndNotify(collName, ueId, patchItems, filter)
+	err := patchDataToDBAndNotify(collName, ueId, patch, filter)
 	if err != nil {
-		log.Print(err)
+		logger.DataRepoLog.Debugf(err.Error())
 	}
 
 	return err
@@ -171,20 +170,24 @@ func patchDataToDBAndNotify(collName string, ueId string, patchItem []models.Pat
 	var err error
 	origValue, err := mongoapi.RestfulAPIGetOne(collName, filter)
 	if err != nil {
+		logger.DataRepoLog.Debugf(err.Error())
 		return err
 	}
 
 	patchJSON, err := json.Marshal(patchItem)
 	if err != nil {
+		logger.DataRepoLog.Debugf(err.Error())
 		return err
 	}
 
 	if err = mongoapi.RestfulAPIJSONPatch(collName, filter, patchJSON); err != nil {
+		logger.DataRepoLog.Debugf(err.Error())
 		return err
 	}
 
 	newValue, err := mongoapi.RestfulAPIGetOne(collName, filter)
 	if err != nil {
+		logger.DataRepoLog.Debugf(err.Error())
 		return err
 	}
 	PreHandleOnDataChangeNotify(ueId, CurrentResourceUri, patchItem, origValue, newValue)
